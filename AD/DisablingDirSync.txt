@@ -1,0 +1,54 @@
+<#
+.SYNOPSIS
+    Disables Azure AD Directory Synchronization (AAD Connect) via Microsoft Graph.
+
+.DESCRIPTION
+    Graph equivalent of Set-MsolDirSyncEnabled -EnableDirSync $false.
+    Run LINE BY LINE — do not execute as a full script.
+
+    This is a reference/runbook script intended for deliberate, supervised execution.
+
+.NOTES
+    Author      : Dillon Iverson
+    Version     : 1.0
+
+    REQUIREMENTS:
+    - PowerShell 7 required (WAM authentication dependency)
+    - Run directly on the AD server to avoid WAM conflicts with existing Graph sessions
+    - Requires Global Administrator + Organization.ReadWrite.All scope
+
+    WARNING - COOLDOWN PERIOD:
+    Microsoft enforces a 72-hour cooldown after disabling dirsync before it can
+    be re-enabled. Do not run this unless you are certain and have confirmed
+    with all stakeholders. There is no quick undo.
+
+    WARNING - VERIFY TENANT:
+    Always confirm Get-MgContext output before running Update-MgOrganization.
+    One wrong tenant ID here affects the entire organization's identity sync.
+
+    SOURCE: Microsoft Graph documentation
+#>
+
+# Install Microsoft Graph module (first time only)
+Install-Module Microsoft.Graph -Scope CurrentUser -Force
+
+# Connect (interactive sign-in via WAM)
+Disconnect-MgGraph -ErrorAction SilentlyContinue
+Connect-MgGraph -Scopes "Organization.ReadWrite.All"
+
+# Confirm correct account and tenant before proceeding
+Get-MgContext | Select-Object Account, TenantId, Scopes
+
+# Get Organization ID
+$orgId = (Get-MgOrganization | Select-Object -First 1 -ExpandProperty Id)
+
+# Disable Directory Sync
+# WARNING: Up to 72-hour cooldown applies after this line executes, often applies after 10 minutes
+Update-MgOrganization -OrganizationId $orgId -OnPremisesSyncEnabled:$false
+
+# Verify — returns False (or blank) when disabled, True when enabled
+(Get-MgOrganization | Select-Object -First 1).OnPremisesSyncEnabled
+
+# Enable Directory Sync (When ready)
+# If DirSync False is not finished yet, this commadn will fail
+Update-MgOrganization -OrganizationId $orgId -OnPremisesSyncEnabled:$true
